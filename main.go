@@ -156,19 +156,29 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "-h", "--help":
-			fmt.Println("Usage: minipm [command]")
+			fmt.Println("Usage: minipm [command] [options]")
 			fmt.Println()
 			fmt.Println("Commands:")
-			fmt.Println("  start <command>  Start a new process and add it to the process list")
-			fmt.Println("  list             List all managed processes")
-			fmt.Println("  -v, --version    Display the version number")
+			fmt.Println("  run <command>      Start a new process and add it to the process list")
+			fmt.Println("  list               List all managed processes")
+			fmt.Println("  --enable           Register the program as a service")
+			fmt.Println("  --start            Start the program as a service")
+			fmt.Println("  --stop             Stop the program service")
+			fmt.Println("  -v, --version      Display the version number")
 			fmt.Println()
 			fmt.Println("Options:")
-			fmt.Println("  -h, --help       Display this help message")
+			fmt.Println("  -h, --help         Display this help message")
+			fmt.Println()
+			fmt.Println("Examples:")
+			fmt.Println("  minipm run \"python3 myscript.py\"")
+			fmt.Println("  minipm list")
+			fmt.Println("  minipm --enable")
+			fmt.Println("  minipm --start")
+			fmt.Println("  minipm --stop")
 			os.Exit(0)
-		case "start":
+		case "run":
 			if len(os.Args) < 3 {
-				fmt.Println("Usage: minipm start <command>")
+				fmt.Println("Usage: minipm run <command>")
 				os.Exit(1)
 			}
 
@@ -200,6 +210,36 @@ func main() {
 		case "-v", "--version":
 			fmt.Println("minipm version 0.1.0")
 			os.Exit(0)
+		case "--enable":
+			err := s.Install()
+			if err != nil {
+				fmt.Printf("Failed to register service: %s\n", err)
+				os.Exit(1)
+			}
+
+			fmt.Println("Service registered successfully")
+			os.Exit(0)
+		case "--start":
+			err := s.Start()
+			if err != nil {
+				fmt.Printf("Failed to start service: %s\n", err)
+				os.Exit(1)
+			}
+
+			fmt.Println("Service started successfully")
+			os.Exit(0)
+		case "--stop":
+			err := s.Stop()
+			if err != nil {
+				fmt.Printf("Failed to stop service: %s\n", err)
+				os.Exit(1)
+			}
+
+			fmt.Println("Service stopped successfully")
+			os.Exit(0)
+		default:
+			fmt.Printf("Error: Invalid command '%s'\n", os.Args[1])
+			os.Exit(1)
 		}
 	}
 
