@@ -105,6 +105,10 @@ func loadPmList(path string) ([]*Command, error) {
 
 	f, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// 如果文件不存在，不输出任何内容
+			return pmList, nil
+		}
 		return pmList, fmt.Errorf("failed to open pm list file %s: %s", path, err)
 	}
 	defer f.Close()
@@ -129,6 +133,15 @@ func loadPmList(path string) ([]*Command, error) {
 }
 
 func main() {
+	// 检查并创建 .minipm 文件夹
+	pmDir := filepath.Join(os.Getenv("HOME"), ".minipm")
+	if _, err := os.Stat(pmDir); os.IsNotExist(err) {
+		err = os.Mkdir(pmDir, 0755)
+		if err != nil {
+			log.Fatalf("Failed to create .minipm directory: %s", err)
+		}
+	}
+
 	svcConfig := &service.Config{
 		Name:        "minipm",
 		DisplayName: "Mini Process Manager",
@@ -142,6 +155,17 @@ func main() {
 
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "-h", "--help":
+			fmt.Println("Usage: minipm [command]")
+			fmt.Println()
+			fmt.Println("Commands:")
+			fmt.Println("  start <command>  Start a new process and add it to the process list")
+			fmt.Println("  list             List all managed processes")
+			fmt.Println("  -v, --version    Display the version number")
+			fmt.Println()
+			fmt.Println("Options:")
+			fmt.Println("  -h, --help       Display this help message")
+			os.Exit(0)
 		case "start":
 			if len(os.Args) < 3 {
 				fmt.Println("Usage: minipm start <command>")
