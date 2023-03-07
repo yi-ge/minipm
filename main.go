@@ -140,6 +140,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to create .minipm directory: %s", err)
 		}
+
+		logsDir := filepath.Join(os.Getenv("HOME"), ".minipm", "logs")
+		err = os.Mkdir(logsDir, 0755)
+		if err != nil {
+			log.Fatalf("Failed to create .minipm/logs directory: %s", err)
+		}
 	}
 
 	svcConfig := &service.Config{
