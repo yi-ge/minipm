@@ -30,6 +30,31 @@ func (p *program) Stop(s service.Service) error {
 	return nil
 }
 
+func runCmd(c *Command) {
+	log.Printf("Starting process: %s\n", c.Name)
+
+	for {
+		logFilePath := filepath.Join(os.Getenv("HOME"), ".minipm", "logs", fmt.Sprintf("%s-%s.log", c.Name, time.Now().Format("2006-01-02_15-04-05")))
+		newCmd := fmt.Sprintf("nohup %s >> %s 2>&1 &", c.Cmd, logFilePath)
+		fmt.Printf("Starting process '%s'...\n", c.Name)
+		err := exec.Command("sh", "-c", newCmd).Start()
+		if err != nil {
+			fmt.Printf("Error: %s\n", err)
+			return
+		}
+
+		time.Sleep(time.Second * 2)
+
+		if !c.IsRunning() {
+			log.Printf("Process %s exited immediately after start\n", c.Name)
+			continue
+		}
+
+		log.Printf("Process %s started successfully\n", c.Name)
+		break
+	}
+}
+
 func (p *program) run() {
 	for {
 		pmListPath := filepath.Join(os.Getenv("HOME"), ".minipm", "pm-list.txt")
@@ -43,28 +68,7 @@ func (p *program) run() {
 				continue
 			}
 
-			go func(c *Command) {
-				log.Printf("Starting process: %s\n", c.Name)
-
-				for {
-					err := c.Start()
-					if err != nil {
-						log.Printf("Failed to start process %s: %s\n", c.Name, err)
-						time.Sleep(time.Second * 5)
-						continue
-					}
-
-					time.Sleep(time.Second * 2)
-
-					if !c.IsRunning() {
-						log.Printf("Process %s exited immediately after start\n", c.Name)
-						continue
-					}
-
-					log.Printf("Process %s started successfully\n", c.Name)
-					break
-				}
-			}(cmd)
+			go runCmd(cmd)
 		}
 
 		select {
@@ -85,19 +89,25 @@ func (c *Command) IsRunning() bool {
 	return len(out) > 0
 }
 
-func (c *Command) Start() error {
-	logPath := filepath.Join(os.Getenv("HOME"), ".minipm", "logs", fmt.Sprintf("%s-%s.log", c.Name, time.Now().Format("2006-01-02_15-04-05")))
-	f, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open log file %s: %s", logPath, err)
+func latestLogFilePath(name string) string {
+	logDir := filepath.Join(os.Getenv("HOME"), ".minipm", "logs")
+	logFiles, err := filepath.Glob(filepath.Join(logDir, fmt.Sprintf("%s-*.log", name)))
+	if err != nil || len(logFiles) == 0 {
+		return ""
 	}
-	defer f.Close()
-
-	cmd := exec.Command("sh", "-c", c.Cmd)
-	cmd.Stdout = f
-	cmd.Stderr = f
-
-	return cmd.Start()
+	latestLogFile := logFiles[0]
+	latestLogTime := time.Time{}
+	for _, logFile := range logFiles {
+		fi, err := os.Stat(logFile)
+		if err != nil {
+			continue
+		}
+		if fi.ModTime().After(latestLogTime) {
+			latestLogTime = fi.ModTime()
+			latestLogFile = logFile
+		}
+	}
+	return latestLogFile
 }
 
 func loadPmList(path string) ([]*Command, error) {
@@ -123,7 +133,7 @@ func loadPmList(path string) ([]*Command, error) {
 		name := strings.Split(line, " ")[0]
 		cmd := &Command{
 			Name: name,
-			Cmd:  strings.TrimSpace(strings.Replace(line, name, "", 1)),
+			Cmd:  strings.TrimSpace(line),
 		}
 
 		pmList = append(pmList, cmd)
@@ -170,6 +180,7 @@ func main() {
 			fmt.Println("  --enable           Register the program as a service")
 			fmt.Println("  --start            Start the program as a service")
 			fmt.Println("  --stop             Stop the program service")
+			fmt.Println("  --disable          Unregister the program as a service")
 			fmt.Println("  -v, --version      Display the version number")
 			fmt.Println()
 			fmt.Println("Options:")
@@ -181,6 +192,7 @@ func main() {
 			fmt.Println("  minipm --enable")
 			fmt.Println("  minipm --start")
 			fmt.Println("  minipm --stop")
+			fmt.Println("  minipm --disable")
 			os.Exit(0)
 		case "run":
 			if len(os.Args) < 3 {
@@ -195,10 +207,15 @@ func main() {
 			}
 			defer f.Close()
 
-			cmd := strings.Join(os.Args[2:], " ")
-			fmt.Fprintf(f, "%s %s\n", filepath.Base(os.Args[2]), cmd)
+			cmd := &Command{
+				Name: filepath.Base(os.Args[2]),
+				Cmd:  strings.Join(os.Args[2:], " "),
+			}
 
-			fmt.Printf("Started process: %s\n", cmd)
+			fmt.Fprintln(f, cmd.Cmd)
+
+			runCmd(cmd)
+
 			os.Exit(0)
 		case "list":
 			pmListPath := filepath.Join(os.Getenv("HOME"), ".minipm", "pm-list.txt")
@@ -208,7 +225,7 @@ func main() {
 			}
 
 			for _, cmd := range pmList {
-				logPath := filepath.Join(os.Getenv("HOME"), ".minipm", "logs", fmt.Sprintf("%s-%s.log", cmd.Name, time.Now().Format("2006-01-02")))
+				logPath := latestLogFilePath(cmd.Name)
 				fmt.Printf("%s: %s\n", cmd.Cmd, logPath)
 			}
 
@@ -243,6 +260,13 @@ func main() {
 
 			fmt.Println("Service stopped successfully")
 			os.Exit(0)
+		case "--disable":
+			err = s.Uninstall()
+			if err != nil {
+				fmt.Printf("Error: %s\n", err)
+				return
+			}
+			fmt.Println("Service uninstalled")
 		default:
 			fmt.Printf("Error: Invalid command '%s'\n", os.Args[1])
 			os.Exit(1)
